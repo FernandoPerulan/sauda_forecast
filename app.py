@@ -5,21 +5,25 @@ Ejecutar con:
     streamlit run app.py
 """
 
-from io import BytesIO
-
-import pandas as pd
 import streamlit as st
 
-import auth
-import charts
-import logic
-from data_source import cargar_forecast_raw
-
+# set_page_config debe ser el primer comando de Streamlit del script. Por eso
+# va antes que "import auth": ese import instancia stauth.Authenticate, que
+# monta un componente (el manejador de cookies) y ya cuenta como un comando.
 st.set_page_config(
     page_title="SAUDA – Forecast Semanal",
     page_icon="📈",
     layout="wide",
 )
+
+from io import BytesIO
+
+import pandas as pd
+
+import auth
+import charts
+import logic
+from data_source import cargar_forecast_raw
 
 usuario = auth.require_login()
 
