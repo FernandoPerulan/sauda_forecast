@@ -1,26 +1,31 @@
 """
 Login usuario/contraseña con streamlit-authenticator.
 
-Credenciales y clave de cookie en config.yaml (ver ese archivo para agregar usuarios).
+Usuarios, hashes de contraseña y clave de cookie viven en st.secrets bajo la
+sección [auth] (.streamlit/secrets.toml en local, "Secrets" de la app en
+Streamlit Community Cloud) — nunca en un archivo commiteado al repositorio.
 """
-
-from pathlib import Path
 
 import streamlit as st
 import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
 
-_CONFIG_PATH = Path(__file__).resolve().parent / "config.yaml"
 
-with open(_CONFIG_PATH, encoding="utf-8") as f:
-    _config = yaml.load(f, Loader=SafeLoader)
+def _a_dict_plano(valor):
+    if hasattr(valor, "to_dict"):
+        valor = valor.to_dict()
+    if isinstance(valor, dict):
+        return {k: _a_dict_plano(v) for k, v in valor.items()}
+    return valor
+
+
+_auth_cfg = st.secrets["auth"]
+credentials = _a_dict_plano(_auth_cfg["credentials"])
 
 authenticator = stauth.Authenticate(
-    _config["credentials"],
-    _config["cookie"]["name"],
-    _config["cookie"]["key"],
-    _config["cookie"]["expiry_days"],
+    credentials,
+    _auth_cfg["cookie_name"],
+    _auth_cfg["cookie_key"],
+    int(_auth_cfg.get("cookie_expiry_days", 7)),
 )
 
 

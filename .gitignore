@@ -4,7 +4,6 @@ __pycache__/
 venv/
 
 # Credenciales reales: nunca versionar
-config.yaml
 .streamlit/secrets.toml
 
 # Datos locales de desarrollo

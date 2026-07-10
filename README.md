@@ -13,10 +13,16 @@ auth.py              Login usuario/contraseña (streamlit-authenticator)
 data_source.py       Origen de datos: OneLake (Fabric) o parquet local
 logic.py             Transformación de datos, filtros y métricas
 charts.py            Gráfico interactivo (Plotly)
-config.yaml          Usuarios y contraseñas (hasheadas) del login
+runtime.txt          Fija la versión de Python en Streamlit Cloud
 scripts/generar_hash_password.py   Utilidad para hashear contraseñas
-.streamlit/secrets.toml.example    Plantilla de configuración de OneLake
+scripts/probar_onelake.py          Prueba standalone de la conexión a OneLake
+.streamlit/secrets.toml.example    Plantilla de configuración (login + OneLake)
 ```
+
+Usuarios, contraseñas (hasheadas) y credenciales del Lakehouse viven **todas
+en `st.secrets`** (`.streamlit/secrets.toml` en local, "Secrets" de la app en
+Streamlit Community Cloud) — no hay ningún archivo de credenciales que se
+suba al repositorio.
 
 ## 1. Instalación
 
@@ -28,58 +34,146 @@ pip install -r requirements.txt
 
 ## 2. Configurar el login
 
+Copiá `.streamlit/secrets.toml.example` a `.streamlit/secrets.toml` (si no lo
+hiciste ya en el paso siguiente) y completá la sección `[auth]`:
+
 1. Elegí un usuario y contraseña, y generá el hash:
    ```bash
    python scripts/generar_hash_password.py "la_contraseña_elegida"
    ```
-2. Copiá el usuario, nombre, email y hash en `config.yaml`.
-3. Cambiá `cookie.key` por una cadena aleatoria propia (invalida sesiones si se cambia).
+2. Agregá un bloque `[auth.credentials.usernames.<usuario>]` con `name`,
+   `email` y el hash generado como `password` (ver el ejemplo ya incluido
+   en el `.example`).
+3. Cambiá `auth.cookie_key` por una cadena aleatoria propia (invalida
+   sesiones activas si se cambia).
 
-`config.yaml` está en `.gitignore`: no debe subirse al repositorio con
-contraseñas reales. Al desplegar en Streamlit Community Cloud, pegar el
-contenido completo como un secret adicional (ver paso 4) en vez de subir el archivo.
+`.streamlit/secrets.toml` está en `.gitignore`: nunca se sube al repositorio
+con contraseñas reales. Al desplegar en Streamlit Community Cloud, este mismo
+contenido se pega en *App settings → Secrets* (ver paso 4).
 
 ## 3. Configurar el origen de datos
 
-Copiá `.streamlit/secrets.toml.example` a `.streamlit/secrets.toml` y completá:
+**Modo desarrollo (sin Lakehouse):** en `.streamlit/secrets.toml` dejar
+`DATA_SOURCE = "parquet"` y copiar el archivo `forecast_final_semanal.parquet`
+que genera el pipeline dentro de `Data/`. Para producción, seguir el tutorial
+de abajo.
 
-- **Modo desarrollo (sin Lakehouse):** dejar `DATA_SOURCE = "parquet"` y copiar
-  el archivo `forecast_final_semanal.parquet` que genera el pipeline dentro de
-  `Data/`.
-- **Modo producción (OneLake / Lakehouse de Fabric):** poner `DATA_SOURCE = "onelake"`
-  y completar:
-  - `ONELAKE_WORKSPACE` / `ONELAKE_LAKEHOUSE`: nombre del workspace y del
-    Lakehouse en Fabric (se ven en la URL al abrir el Lakehouse en
-    `app.fabric.microsoft.com`).
-  - `ONELAKE_TABLA_FORECAST`: nombre de la tabla Delta dentro del Lakehouse.
-  - `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`: credenciales
-    de un **Service Principal** (App registration en Microsoft Entra ID) al
-    que se le otorga acceso de lectura al workspace de Fabric (rol *Viewer*).
-    Es la identidad con la que la app lee los datos — no se usan las
-    credenciales del usuario que abre el dashboard.
+### 3.1 Tutorial paso a paso: configurar OneLake / Lakehouse de Fabric
+
+**Paso 1 — Crear el Service Principal (App registration) en Microsoft Entra ID**
+
+1. Entrar a [portal.azure.com](https://portal.azure.com) → buscar
+   **Microsoft Entra ID** → **Registros de aplicaciones** (*App registrations*)
+   → **Nuevo registro**.
+2. Nombre: algo identificable, ej. `sauda-forecast-streamlit`.
+3. Tipo de cuenta admitida: *"Cuentas solo en este directorio organizativo"*
+   (single tenant). No hace falta URI de redirección.
+4. Clic en **Registrar**.
+5. En la página *Overview* de la app recién creada, copiar:
+   - **Id. de aplicación (cliente)** → va en `AZURE_CLIENT_ID`.
+   - **Id. de directorio (inquilino)** → va en `AZURE_TENANT_ID`.
+
+**Paso 2 — Generar el Client Secret**
+
+1. Dentro de la misma app registrada, ir a **Certificados y secretos**
+   (*Certificates & secrets*) → **Nuevo secreto de cliente**.
+2. Poner una descripción y una expiración (ej. 12 o 24 meses — al vencer, hay
+   que generar uno nuevo y actualizar el secret en Streamlit).
+3. Copiar el **Valor** del secreto apenas se genera — Azure solo lo muestra
+   una vez. Va en `AZURE_CLIENT_SECRET`.
+
+**Paso 3 — Habilitar Service Principals en el tenant de Fabric (una sola vez)**
+
+Este paso lo hace un administrador del tenant de Fabric/Power BI, y suele
+pasarse por alto:
+
+1. En [app.fabric.microsoft.com](https://app.fabric.microsoft.com), ícono de
+   engranaje → **Configuración de administración** (*Admin portal*) →
+   **Configuración del inquilino** (*Tenant settings*).
+2. Buscar la sección **Configuración de desarrollador** y habilitar
+   **"Los service principals pueden usar las API de Fabric"** (*Service
+   principals can use Fabric APIs*) — como mínimo para el grupo de seguridad
+   al que pertenece el Service Principal creado en el Paso 1.
+3. Sin este paso, el Service Principal no puede autenticarse contra
+   Fabric/OneLake aunque tenga permisos en el workspace — es la causa más
+   común de errores de autenticación "silenciosos".
+
+**Paso 4 — Dar acceso del Service Principal al workspace**
+
+1. En Fabric, abrir el workspace donde está el Lakehouse.
+2. Ícono de personas / **Gestionar acceso** (*Manage access*) → **Agregar
+   personas o grupos**.
+3. Buscar por el **nombre** de la app registrada en el Paso 1 (Fabric la
+   encuentra como si fuera un usuario más).
+4. Asignar el rol **Viewer** (alcanza para lectura; no hace falta más).
+
+**Paso 5 — Identificar el workspace, el Lakehouse y la tabla**
+
+1. Abrir el Lakehouse en Fabric y mirar la URL del navegador:
+   ```
+   https://app.fabric.microsoft.com/groups/<WORKSPACE>/lakehouses/<lakehouse-id>
+   ```
+   `<WORKSPACE>` (nombre o GUID) va en `ONELAKE_WORKSPACE`.
+2. El nombre del Lakehouse (sin la palabra "Lakehouse", tal como aparece en
+   el panel izquierdo de Fabric) va en `ONELAKE_LAKEHOUSE`.
+3. Dentro del Lakehouse, en el panel **Tables**, confirmar el nombre exacto
+   de la tabla del forecast (debe ser una tabla administrada/Delta, no un
+   archivo suelto en *Files*) → va en `ONELAKE_TABLA_FORECAST`.
+
+**Paso 6 — Completar `.streamlit/secrets.toml`**
+
+```toml
+DATA_SOURCE = "onelake"
+
+ONELAKE_WORKSPACE = "mi-workspace"
+ONELAKE_LAKEHOUSE = "MiLakehouse"
+ONELAKE_TABLA_FORECAST = "forecast_final_semanal"
+
+AZURE_TENANT_ID = "<Id. de directorio del Paso 1>"
+AZURE_CLIENT_ID = "<Id. de aplicación del Paso 1>"
+AZURE_CLIENT_SECRET = "<Valor del secreto del Paso 2>"
+```
+
+**Paso 7 — Probar la conexión antes de desplegar**
+
+Correr el script de prueba standalone (no necesita levantar Streamlit):
+
+```bash
+python scripts/probar_onelake.py
+```
+
+Si imprime la cantidad de filas y las columnas, la conexión funciona y se
+puede pasar a desplegar. Si falla, ver la sección de errores comunes abajo.
+
+**Errores comunes**
+
+| Síntoma | Causa probable |
+|---|---|
+| Error de autenticación / tenant inválido | `AZURE_TENANT_ID`/`AZURE_CLIENT_ID` mal copiados (revisar que sean GUIDs completos) |
+| `403` / `Forbidden` / permission denied | Falta el Paso 3 (Service principals habilitados en el tenant) o el Paso 4 (rol Viewer en el workspace) |
+| `404` / *path not found* | `ONELAKE_WORKSPACE`, `ONELAKE_LAKEHOUSE` o el nombre de tabla no coinciden exactamente (mayúsculas/minúsculas incluidas) con lo que muestra Fabric |
+| El secreto dejó de funcionar de un día para otro | El Client Secret venció (ver fecha de expiración elegida en el Paso 2) — generar uno nuevo |
 
 ## 4. Desplegar en Streamlit Community Cloud
 
 1. Subir este proyecto a un repositorio (GitHub/GitLab/Bitbucket) — **sin**
-   `config.yaml` ni `.streamlit/secrets.toml` reales (quedan afuera por
-   `.gitignore`).
+   `.streamlit/secrets.toml` real (queda afuera por `.gitignore`).
 2. En [share.streamlit.io](https://share.streamlit.io), crear la app apuntando
    a `app.py`.
-3. En *App settings → Secrets*, pegar en formato TOML:
-   - Todo el contenido de `.streamlit/secrets.toml` (con `DATA_SOURCE = "onelake"`
-     y los datos reales del Service Principal), **y además** el contenido de
-     `config.yaml` bajo una clave propia, por ejemplo:
-     ```toml
-     DATA_SOURCE = "onelake"
-     ONELAKE_WORKSPACE = "..."
-     # ... resto de secrets.toml ...
+3. En *App settings → Secrets*, pegar tal cual el contenido completo de tu
+   `.streamlit/secrets.toml` local (con `DATA_SOURCE = "onelake"`, los datos
+   reales del Service Principal, y la sección `[auth]` con tus usuarios).
 
-     [auth_config]
-     # contenido de config.yaml pegado acá si se prefiere no subir el archivo
-     ```
-     (Si se sube `config.yaml` directamente al repo privado en cambio, no
-     hace falta duplicarlo en Secrets — pero entonces las contraseñas quedan
-     en el repositorio, aunque sea privado.)
+### Versión de Python (`runtime.txt`)
+
+`runtime.txt` fija `python-3.12`. Sin este archivo, Streamlit Cloud puede
+asignar una versión de Python muy nueva para la que paquetes como `pandas` o
+`numpy` todavía no tienen instaladores (`wheels`) precompilados — obliga a
+compilarlos desde el código fuente en cada build, lo que puede tardar
+decenas de minutos y hacer que el build se corte a la mitad (dependencias
+instaladas parcialmente). Si en el futuro se actualizan las versiones de
+`requirements.txt`, conviene revisar que `runtime.txt` siga apuntando a una
+versión de Python con buena cobertura de wheels para esas versiones.
 
 ### Por qué OneLake y no el SQL Analytics Endpoint
 

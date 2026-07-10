@@ -1,5 +1,6 @@
 """
-Genera el hash bcrypt de una contraseña para pegarlo en config.yaml.
+Genera el hash bcrypt de una contraseña para pegarlo en la sección [auth] de
+.streamlit/secrets.toml (o en los Secrets de Streamlit Community Cloud).
 
 Uso:
     python scripts/generar_hash_password.py "mi_contraseña"
