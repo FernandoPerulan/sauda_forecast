@@ -47,17 +47,20 @@ COL_DISPLAY = {orig: disp for orig, disp in TABLE_COLS}
 
 
 def transformar_datos(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
+    # Sin .copy(): el df que llega ya es una copia aislada (viene de una
+    # función cacheada con @st.cache_data, que entrega una copia nueva en
+    # cada llamada), y con ~2M filas duplicar el DataFrame acá arriba puede
+    # duplicar el pico de memoria sin necesidad.
 
     # La tabla del Lakehouse usa "_" donde el resto del código espera "-" o
     # espacio (los caracteres originales no son válidos como nombre de
     # columna SQL/Delta). rename() ignora en silencio las claves que no
     # existan, así que es seguro también cuando el origen ya viene con los
-    # nombres "correctos" (modo parquet local).
-    df = df.rename(columns={
+    # nombres "correctos" (modo parquet local). inplace evita otra copia.
+    df.rename(columns={
         "F_MODELO": "F-MODELO",
         "Articulo_Desc": "Articulo Desc",
-    })
+    }, inplace=True)
 
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce").dt.normalize()
 
@@ -95,7 +98,10 @@ def transformar_datos(df: pd.DataFrame) -> pd.DataFrame:
         grp_cols = [c for c in ["Sucursal", "Articulo Desc"] if c in df.columns]
         if grp_cols:
             vp_df = (
-                df_4w.groupby(grp_cols, as_index=False)["F-MODELO"]
+                # observed=True: grp_cols puede ser category (ver data_source.py);
+                # sin esto, groupby generaría el producto cartesiano de TODAS las
+                # combinaciones posibles de sucursal×artículo, no solo las reales.
+                df_4w.groupby(grp_cols, as_index=False, observed=True)["F-MODELO"]
                 .sum()
                 .rename(columns={"F-MODELO": "_fc4"})
             )
@@ -130,6 +136,10 @@ def transformar_datos(df: pd.DataFrame) -> pd.DataFrame:
         if dcol in df.columns:
             df[dcol] = df[dcol].astype(str).str.strip()
             df.loc[df[dcol].isin(["nan", "None", ""]), dcol] = pd.NA
+            # category en vez de string: estas columnas tienen pocos valores
+            # únicos repetidos en millones de filas — con ~2M filas la
+            # diferencia de memoria es de cientos de MB a unos pocos.
+            df[dcol] = df[dcol].astype("category")
 
     return df.sort_values(DATE_COL)
 

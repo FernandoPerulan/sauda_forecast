@@ -26,6 +26,34 @@ import streamlit as st
 _BASE = Path(__file__).resolve().parent
 FORECAST_PARQUET_PATH = _BASE / "Data" / "forecast_final_semanal.parquet"
 
+# TTL largo: el pipeline corre semanalmente y la lectura completa desde
+# OneLake es pesada (~1 minuto, cientos de MB) — no tiene sentido repetirla
+# cada pocos minutos. "🔄 Recargar datos" fuerza una lectura nueva de todos modos.
+_ONELAKE_CACHE_TTL = 3600
+
+# Columnas realmente usadas por la app (ver logic.py). Pedir solo estas —en
+# vez de las ~24 que trae la tabla real, con columnas de diagnóstico del
+# pipeline que no se muestran (desv_estandar, F_MIN, F_MAX, confiabilidad,
+# wmape, bias_pct, cv_valor, n_hist, IDSucursal, IDArticulo, week_of_year)—
+# reduce bastante la memoria y el tiempo de lectura. Nombres en crudo, tal
+# como están en la tabla del Lakehouse (antes del rename de logic.py).
+_ONELAKE_COLUMNAS_NECESARIAS = [
+    "FechaCbte", "Sucursal", "Departamento", "Familia", "SubFamilia",
+    "Articulo_Desc", "Cluster", "cv_grupo", "real", "F_MODELO",
+    "Promo", "Feriado", "LYSW",
+]
+
+# Columnas de texto con pocos valores únicos repetidos en ~2M filas. Se
+# convierten a "dictionary encoded" (equivalente Arrow de category) ANTES de
+# pasar a pandas: de lo contrario pandas materializa cada fila como un
+# string de Python suelto y el pico de memoria durante la conversión llega a
+# ~950MB (llegó a tirar Segmentation fault en Streamlit Cloud); codificando
+# antes, el pico baja a ~150-390MB.
+_ONELAKE_COLUMNAS_CATEGORICAS = [
+    "Sucursal", "Departamento", "Familia", "SubFamilia",
+    "Articulo_Desc", "Cluster", "cv_grupo",
+]
+
 
 def _secret(nombre: str, default: str = "") -> str:
     return str(st.secrets.get(nombre, default))
@@ -58,12 +86,19 @@ def _onelake_storage_options() -> dict:
     }
 
 
-@st.cache_data(ttl=600, show_spinner="Consultando OneLake...")
+@st.cache_data(ttl=_ONELAKE_CACHE_TTL, show_spinner="Consultando OneLake...")
 def _leer_onelake(tabla: str) -> pd.DataFrame:
     from deltalake import DeltaTable
 
     dt = DeltaTable(_onelake_table_path(tabla), storage_options=_onelake_storage_options())
-    return dt.to_pandas()
+    tabla_arrow = dt.to_pyarrow_table(columns=_ONELAKE_COLUMNAS_NECESARIAS)
+
+    for col in _ONELAKE_COLUMNAS_CATEGORICAS:
+        if col in tabla_arrow.schema.names:
+            idx = tabla_arrow.schema.get_field_index(col)
+            tabla_arrow = tabla_arrow.set_column(idx, col, tabla_arrow.column(col).dictionary_encode())
+
+    return tabla_arrow.to_pandas()
 
 
 @st.cache_data(ttl=600, show_spinner="Leyendo archivo local...")
@@ -85,7 +120,7 @@ def cargar_forecast_raw() -> pd.DataFrame:
     return _leer_parquet_local()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=_ONELAKE_CACHE_TTL, show_spinner=False)
 def obtener_estado_datos() -> dict:
     """Frescura del origen de datos: cuándo se escribió por última vez y cuántas filas tenía.
 
