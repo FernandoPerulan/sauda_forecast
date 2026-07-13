@@ -9,6 +9,8 @@ Streamlit Community Cloud) — nunca en un archivo commiteado al repositorio.
 import streamlit as st
 import streamlit_authenticator as stauth
 
+authenticator: stauth.Authenticate | None = None
+
 
 def _a_dict_plano(valor):
     if hasattr(valor, "to_dict"):
@@ -18,22 +20,29 @@ def _a_dict_plano(valor):
     return valor
 
 
-_auth_cfg = st.secrets["auth"]
-credentials = _a_dict_plano(_auth_cfg["credentials"])
-
-authenticator = stauth.Authenticate(
-    credentials,
-    _auth_cfg["cookie_name"],
-    _auth_cfg["cookie_key"],
-    int(_auth_cfg.get("cookie_expiry_days", 7)),
-)
-
-
 def require_login() -> str:
     """Muestra el formulario de login y detiene la app hasta que el usuario ingrese.
 
     Devuelve el nombre del usuario autenticado.
     """
+    global authenticator
+
+    # Authenticate() inicializa varias claves de st.session_state (entre
+    # ellas "logout") la primera vez que se instancia. Si se construyera una
+    # sola vez a nivel de módulo, Python cachea el import y esa
+    # inicialización correría solo para la primera sesión del proceso —
+    # cualquier otra sesión posterior en el mismo proceso (otro usuario, u
+    # otra pestaña) rompería con KeyError al leer la cookie. Por eso se
+    # reconstruye en cada rerun, dentro de esta función.
+    auth_cfg = st.secrets["auth"]
+    credentials = _a_dict_plano(auth_cfg["credentials"])
+    authenticator = stauth.Authenticate(
+        credentials,
+        auth_cfg["cookie_name"],
+        auth_cfg["cookie_key"],
+        int(auth_cfg.get("cookie_expiry_days", 7)),
+    )
+
     authenticator.login()
 
     estado = st.session_state.get("authentication_status")
