@@ -16,6 +16,7 @@ st.set_page_config(
     layout="wide",
 )
 
+from datetime import datetime, timezone
 from io import BytesIO
 
 import pandas as pd
@@ -23,7 +24,7 @@ import pandas as pd
 import auth
 import charts
 import logic
-from data_source import cargar_forecast_raw
+from data_source import cargar_forecast_raw, obtener_estado_datos
 
 usuario = auth.require_login()
 
@@ -48,7 +49,36 @@ st.sidebar.header("Filtros")
 
 if st.sidebar.button("🔄 Recargar datos"):
     st.cache_resource.clear()
+    st.cache_data.clear()  # cargar_forecast_raw() y obtener_estado_datos() usan cache_data aparte
     st.rerun()
+
+
+def _mostrar_estado_datos():
+    estado = obtener_estado_datos()
+    actualizado = estado.get("actualizado")
+    if not actualizado:
+        st.sidebar.caption("🕐 Sin información de la última actualización.")
+        return
+
+    delta = datetime.now(timezone.utc) - actualizado
+    dias = delta.days
+    if dias >= 1:
+        hace = f"hace {dias} día{'s' if dias != 1 else ''}"
+    else:
+        horas = delta.seconds // 3600
+        hace = f"hace {horas} hora{'s' if horas != 1 else ''}" if horas >= 1 else "hace instantes"
+
+    filas = estado.get("filas")
+    filas_str = f" · {filas:,} filas" if filas else ""
+    texto = f"Datos actualizados: {actualizado.strftime('%d/%m/%Y %H:%M UTC')} ({hace}){filas_str}"
+
+    if dias >= 9:  # el pipeline corre semanalmente: más de ~9 días es señal de alerta
+        st.sidebar.warning(f"⚠ {texto}")
+    else:
+        st.sidebar.caption(f"🕐 {texto}")
+
+
+_mostrar_estado_datos()
 
 try:
     df, dim = _cargar()

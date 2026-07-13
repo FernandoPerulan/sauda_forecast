@@ -12,10 +12,12 @@ Dos modos, elegidos con el secret/env var DATA_SOURCE:
                no se puede instalar el ODBC Driver de Microsoft que exigiría
                conectarse por el SQL Analytics Endpoint).
 
-El Service Principal necesita acceso de lectura al workspace/Lakehouse de
-Fabric (rol Viewer o superior).
+El Service Principal necesita rol Contributor (o superior) en el workspace de
+Fabric: el rol Viewer no incluye el permiso "ReadAll" que exige la lectura
+directa de archivos vía OneLake.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -40,11 +42,8 @@ def _onelake_table_path(tabla: str) -> str:
     return f"abfss://{workspace}@onelake.dfs.fabric.microsoft.com/{lakehouse}.Lakehouse/Tables/{segmento_tabla}"
 
 
-@st.cache_data(ttl=600, show_spinner="Consultando OneLake...")
-def _leer_onelake(tabla: str) -> pd.DataFrame:
-    from deltalake import DeltaTable
-
-    storage_options = {
+def _onelake_storage_options() -> dict:
+    return {
         "azure_tenant_id": _secret("AZURE_TENANT_ID"),
         "azure_client_id": _secret("AZURE_CLIENT_ID"),
         "azure_client_secret": _secret("AZURE_CLIENT_SECRET"),
@@ -57,7 +56,13 @@ def _leer_onelake(tabla: str) -> pd.DataFrame:
         # como Service Principal externo, no desde dentro de Fabric.)
         "use_fabric_endpoint": "true",
     }
-    dt = DeltaTable(_onelake_table_path(tabla), storage_options=storage_options)
+
+
+@st.cache_data(ttl=600, show_spinner="Consultando OneLake...")
+def _leer_onelake(tabla: str) -> pd.DataFrame:
+    from deltalake import DeltaTable
+
+    dt = DeltaTable(_onelake_table_path(tabla), storage_options=_onelake_storage_options())
     return dt.to_pandas()
 
 
@@ -78,3 +83,34 @@ def cargar_forecast_raw() -> pd.DataFrame:
         tabla = _secret("ONELAKE_TABLA_FORECAST", "forecast_final_semanal")
         return _leer_onelake(tabla)
     return _leer_parquet_local()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def obtener_estado_datos() -> dict:
+    """Frescura del origen de datos: cuándo se escribió por última vez y cuántas filas tenía.
+
+    En modo OneLake usa el historial de commits de la tabla Delta (no hace
+    falta ninguna llamada extra a la API de Fabric ni permisos adicionales).
+    En modo parquet usa la fecha de modificación del archivo local.
+    """
+    modo = _secret("DATA_SOURCE", "parquet")
+
+    if modo == "onelake":
+        from deltalake import DeltaTable
+
+        tabla = _secret("ONELAKE_TABLA_FORECAST", "forecast_final_semanal")
+        dt = DeltaTable(_onelake_table_path(tabla), storage_options=_onelake_storage_options())
+        historial = dt.history(limit=1)
+        if not historial:
+            return {"actualizado": None, "filas": None}
+        ultimo = historial[0]
+        filas = (ultimo.get("operationMetrics") or {}).get("numOutputRows")
+        return {
+            "actualizado": datetime.fromtimestamp(ultimo["timestamp"] / 1000, tz=timezone.utc),
+            "filas": int(filas) if filas is not None else None,
+        }
+
+    if FORECAST_PARQUET_PATH.exists():
+        mtime = FORECAST_PARQUET_PATH.stat().st_mtime
+        return {"actualizado": datetime.fromtimestamp(mtime, tz=timezone.utc), "filas": None}
+    return {"actualizado": None, "filas": None}

@@ -48,12 +48,28 @@ COL_DISPLAY = {orig: disp for orig, disp in TABLE_COLS}
 
 def transformar_datos(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+
+    # La tabla del Lakehouse usa "_" donde el resto del código espera "-" o
+    # espacio (los caracteres originales no son válidos como nombre de
+    # columna SQL/Delta). rename() ignora en silencio las claves que no
+    # existan, así que es seguro también cuando el origen ya viene con los
+    # nombres "correctos" (modo parquet local).
+    df = df.rename(columns={
+        "F_MODELO": "F-MODELO",
+        "Articulo_Desc": "Articulo Desc",
+    })
+
     df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce").dt.normalize()
 
     if "tipo" not in df.columns:
-        df["tipo"] = np.where(
-            df["forecast"].notna() & df["real"].isna(), "F", "R"
-        )
+        if "forecast" in df.columns:
+            df["tipo"] = np.where(
+                df["forecast"].notna() & df["real"].isna(), "F", "R"
+            )
+        else:
+            # La tabla de producción no trae columna "forecast": una fila es
+            # de forecast cuando todavía no tiene venta real registrada.
+            df["tipo"] = np.where(df["real"].isna(), "F", "R")
 
     for col in ["real", "forecast", "LYSW", "F-MODELO"]:
         if col in df.columns:
