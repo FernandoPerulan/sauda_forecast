@@ -116,9 +116,14 @@ pasarse por alto:
    `<WORKSPACE>` (nombre o GUID) va en `ONELAKE_WORKSPACE`.
 2. El nombre del Lakehouse (sin la palabra "Lakehouse", tal como aparece en
    el panel izquierdo de Fabric) va en `ONELAKE_LAKEHOUSE`.
-3. Dentro del Lakehouse, en el panel **Tables**, confirmar el nombre exacto
-   de la tabla del forecast (debe ser una tabla administrada/Delta, no un
-   archivo suelto en *Files*) → va en `ONELAKE_TABLA_FORECAST`.
+3. Dentro del Lakehouse, en el panel **Tables**, revisar si las tablas están
+   agrupadas dentro de una carpeta de esquema (ej. `dbo`) — eso pasa cuando el
+   Lakehouse tiene *esquemas* habilitados. Si es así, ese nombre (`dbo`) va en
+   `ONELAKE_SCHEMA`; si las tablas aparecen sueltas directamente bajo
+   **Tables** (sin carpeta intermedia), dejar `ONELAKE_SCHEMA` vacío.
+4. Confirmar el nombre exacto de la tabla del forecast (debe ser una tabla
+   administrada/Delta, no un archivo suelto en *Files*) → va en
+   `ONELAKE_TABLA_FORECAST`.
 
 **Paso 6 — Completar `.streamlit/secrets.toml`**
 
@@ -127,6 +132,7 @@ DATA_SOURCE = "onelake"
 
 ONELAKE_WORKSPACE = "mi-workspace"
 ONELAKE_LAKEHOUSE = "MiLakehouse"
+ONELAKE_SCHEMA = "dbo"                 # vacío ("") si el Lakehouse no tiene esquemas
 ONELAKE_TABLA_FORECAST = "forecast_final_semanal"
 
 AZURE_TENANT_ID = "<Id. de directorio del Paso 1>"

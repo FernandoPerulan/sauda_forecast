@@ -34,7 +34,9 @@ def main():
     workspace = secrets["ONELAKE_WORKSPACE"]
     lakehouse = secrets["ONELAKE_LAKEHOUSE"]
     tabla = secrets.get("ONELAKE_TABLA_FORECAST", "forecast_final_semanal")
-    path = f"abfss://{workspace}@onelake.dfs.fabric.microsoft.com/{lakehouse}.Lakehouse/Tables/{tabla}"
+    schema = secrets.get("ONELAKE_SCHEMA", "")
+    segmento_tabla = f"{schema}/{tabla}" if schema else tabla
+    path = f"abfss://{workspace}@onelake.dfs.fabric.microsoft.com/{lakehouse}.Lakehouse/Tables/{segmento_tabla}"
 
     storage_options = {
         "azure_tenant_id": secrets["AZURE_TENANT_ID"],

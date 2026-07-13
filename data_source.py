@@ -32,7 +32,12 @@ def _secret(nombre: str, default: str = "") -> str:
 def _onelake_table_path(tabla: str) -> str:
     workspace = _secret("ONELAKE_WORKSPACE")
     lakehouse = _secret("ONELAKE_LAKEHOUSE")
-    return f"abfss://{workspace}@onelake.dfs.fabric.microsoft.com/{lakehouse}.Lakehouse/Tables/{tabla}"
+    # Los Lakehouse con esquemas habilitados (carpeta "dbo" debajo de Tables
+    # en el explorador de Fabric) requieren el esquema en la ruta; los que no
+    # tienen esquemas dejan ONELAKE_SCHEMA vacío y se omite ese segmento.
+    schema = _secret("ONELAKE_SCHEMA")
+    segmento_tabla = f"{schema}/{tabla}" if schema else tabla
+    return f"abfss://{workspace}@onelake.dfs.fabric.microsoft.com/{lakehouse}.Lakehouse/Tables/{segmento_tabla}"
 
 
 @st.cache_data(ttl=600, show_spinner="Consultando OneLake...")
