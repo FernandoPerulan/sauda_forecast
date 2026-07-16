@@ -56,6 +56,154 @@ def _fila(nombre: str, desc: str) -> str:
     )
 
 
+# Guía de columnas: mismo orden que "Tipo" + logic.TABLE_COLS en la pestaña Tabla.
+# (columna mostrada, campo interno, qué es, unidad, ejemplo, caso práctico)
+_GUIA_COLUMNAS = [
+    ("Tipo", "tipo",
+     "Indica si la fila es historial ya cerrado o una semana futura predicha.",
+     "Texto (Histórico / Forecast)", "Histórico",
+     "Distinguir de un vistazo qué números ya pasaron y cuáles son predicción."),
+    ("Fecha", "FechaCbte",
+     "Semana a la que corresponde la fila, siempre normalizada al lunes de esa semana.",
+     "Fecha (lunes)", "05/01/2026",
+     "Ubicar en qué semana calendario cae un pico o un valle de demanda."),
+    ("Sucursal", "Sucursal",
+     "Punto de venta al que pertenece la fila.",
+     "Texto", "Sucursal Centro",
+     "Comparar el forecast del mismo artículo entre dos sucursales."),
+    ("Departamento", "Departamento",
+     "Primer nivel de la jerarquía comercial del producto.",
+     "Texto", "Bebidas",
+     "Agrupar el forecast a nivel departamento para un presupuesto comercial."),
+    ("Familia", "Familia",
+     "Segundo nivel de la jerarquía, dentro de un Departamento.",
+     "Texto", "Cervezas",
+     "Ver la estacionalidad de una familia completa de productos."),
+    ("SubFamilia", "SubFamilia",
+     "Tercer nivel de la jerarquía, dentro de una Familia. Es también el nivel al que entrena el modelo antes de repartir a SKU.",
+     "Texto", "Cerveza Lata",
+     "Detectar qué subfamilia puntual está creciendo o cayendo."),
+    ("Artículo", "Articulo Desc",
+     "SKU: código y descripción del producto.",
+     "Texto", "100146 - MARLBORO",
+     "Buscar el forecast de un producto puntual antes de generar un pedido."),
+    ("Cluster", "Cluster",
+     "Etiqueta comercial cargada a mano (no calculada): 1/2/3 = nivel de volatilidad declarado, P = foco promocional, T = en prueba/piloto.",
+     "Texto (1/2/3/P/T)", "1",
+     "Filtrar solo sucursales o artículos en prueba piloto (Cluster T) antes de confiar en su forecast."),
+    ("Grupo CV", "cv_grupo",
+     "Clasificación estadística de volatilidad de la demanda que calcula el pipeline: A (estable), B (media), C (irregular). Define qué configuración de LightGBM se usó.",
+     "Texto (A/B/C)", "A",
+     "Priorizar la revisión manual de compradores en los artículos de Grupo C."),
+    ("CV (valor)", "cv_valor",
+     "Valor numérico del coeficiente de variación que determinó el Grupo CV de esa serie.",
+     "Número (ratio, sin unidad)", "0.42",
+     "Ver qué tan cerca está un artículo del límite entre Grupo B (0.35) y Grupo C (0.80), aunque la etiqueta ya esté fija."),
+    ("Real (unid.)", "real",
+     "Cantidad realmente vendida esa semana. Solo tiene valor en filas Histórico.",
+     "Unidades vendidas", "134",
+     "Ver la venta real de la última semana ya cerrada."),
+    ("Forecast PURO", "F-MODELO",
+     "Predicción del modelo LightGBM del Grupo CV correspondiente, para esa semana.",
+     "Unidades", "128",
+     "Base para calcular cuánto pedir a proveedores en las próximas 4 semanas."),
+    ("Forecast mín. (80%)", "F_MIN",
+     "Piso de la banda de confianza ~80% alrededor del Forecast PURO (nunca baja de 0).",
+     "Unidades", "95",
+     "Escenario conservador de reposición, para minimizar el riesgo de sobre-stock."),
+    ("Forecast máx. (80%)", "F_MAX",
+     "Techo de la banda de confianza ~80% alrededor del Forecast PURO.",
+     "Unidades", "161",
+     "Escenario de resguardo para evitar quiebre de stock si la demanda repunta."),
+    ("Venta prom. semanal", "venta_prom_semanal",
+     "Promedio de Forecast PURO de las primeras 4 semanas de forecast.",
+     "Unidades / semana", "130.5",
+     "Dimensionar el nivel de reposición recurrente de un artículo."),
+    ("Venta prom. diaria", "venta_prom_diario",
+     "El mismo promedio semanal, dividido en 28 días.",
+     "Unidades / día", "18.6",
+     "Calcular cuántos días de cobertura da el stock actual en el depósito."),
+    ("Error% PURO", "error_pct",
+     "Diferencia entre Real y Forecast PURO de esa semana puntual ya cerrada.",
+     "%", "+4.7 %",
+     "Detectar una semana específica donde el modelo se desvió mucho, por ejemplo por un evento no cargado."),
+    ("LYSW", "LYSW",
+     "Last Year Same Week: venta real de la misma semana, un año calendario atrás (alineada por año y semana ISO).",
+     "Unidades", "121",
+     "Comparar el forecast contra lo vendido en la misma época del año pasado, para detectar un cambio de tendencia."),
+    ("Promo", "Promo",
+     "Marca si esa semana tuvo una promoción u oferta activa cargada en el maestro comercial.",
+     "0 / 1 (booleano)", "1",
+     "Filtrar las semanas con oferta para no confundir un pico promocional con la tendencia base del artículo."),
+    ("Promo%", "promo_pct",
+     "Uplift de venta real vs. LYSW, calculado solo en semanas históricas con Promo = 1.",
+     "%", "+22.3 %",
+     "Medir qué tan efectiva fue una promoción puntual frente al año anterior."),
+    ("Feriado", "Feriado",
+     "Marca si esa semana contiene un feriado nacional argentino.",
+     "0 / 1 (booleano)", "1",
+     "Explicar una caída de venta en días hábiles por la presencia de un feriado en la semana."),
+    ("Confiabilidad", "confiabilidad",
+     "Etiqueta Alta / Media / Baja / Sin datos sobre qué tan bien predijo históricamente el modelo esa serie puntual (Artículo × Sucursal).",
+     "Texto", "Media",
+     "Filtrar y revisar a mano los artículos con Confiabilidad Baja antes de aprobar una orden de compra."),
+    ("WMAPE serie", "wmape",
+     "Error histórico ponderado por volumen de esa serie puntual, usando todo su backtest disponible (no solo el período filtrado en pantalla).",
+     "%", "18.4 %",
+     "Comparar la precisión histórica del modelo entre dos artículos distintos."),
+    ("Sesgo (bias)", "bias_pct",
+     "Si el modelo sobreestima (+) o subestima (−) esa serie de forma sistemática.",
+     "% (con signo)", "-6.2 %",
+     "Detectar un artículo que el modelo viene subestimando semana tras semana, para ajustar el pedido manualmente al alza."),
+    ("Desvío estándar", "desv_estandar",
+     "Qué tanto varía, de una semana a otra, el error histórico (Real − Forecast PURO) de esa serie.",
+     "Unidades", "12.8",
+     "Series con desvío alto necesitan más stock de seguridad como colchón ante el error del modelo."),
+    ("Semanas hist. usadas", "n_hist",
+     "Cantidad de semanas con Real y Forecast PURO simultáneos que se usaron para calcular WMAPE, Sesgo, Desvío y Confiabilidad.",
+     "Semanas (conteo)", "45",
+     "Si n_hist es bajo (por ejemplo menor a 8), conviene tomar la Confiabilidad de esa serie con cautela."),
+]
+
+
+def _tabla_guia_columnas() -> str:
+    filas_html = ""
+    for i, (col, campo, que_es, unidad, ejemplo, caso) in enumerate(_GUIA_COLUMNAS, start=1):
+        fondo = "#FFFFFF" if i % 2 else GRIS_CLARO
+        filas_html += f"""
+<tr style="background:{fondo};">
+  <td style="padding:8px 10px;color:{GRIS};font-size:0.75rem;vertical-align:top;">{i}</td>
+  <td style="padding:8px 10px;vertical-align:top;">
+    <div style="font-weight:700;">{col}</div>
+    <div style="font-family:Consolas,monospace;font-size:0.7rem;color:{GRIS};">{campo}</div>
+  </td>
+  <td style="padding:8px 10px;vertical-align:top;">{que_es}</td>
+  <td style="padding:8px 10px;vertical-align:top;white-space:nowrap;color:{GRIS};">{unidad}</td>
+  <td style="padding:8px 10px;vertical-align:top;font-family:Consolas,monospace;font-size:0.78rem;white-space:nowrap;">{ejemplo}</td>
+  <td style="padding:8px 10px;vertical-align:top;">{caso}</td>
+</tr>"""
+
+    return f"""
+<div style="overflow-x:auto;">
+<table style="width:100%;border-collapse:collapse;font-size:0.82rem;color:#1E293B;">
+  <thead>
+    <tr style="background:{AZUL};color:white;">
+      <th style="padding:8px 10px;text-align:left;">#</th>
+      <th style="padding:8px 10px;text-align:left;">Columna</th>
+      <th style="padding:8px 10px;text-align:left;">Qué es</th>
+      <th style="padding:8px 10px;text-align:left;">Unidad</th>
+      <th style="padding:8px 10px;text-align:left;">Ejemplo</th>
+      <th style="padding:8px 10px;text-align:left;">Caso práctico</th>
+    </tr>
+  </thead>
+  <tbody>
+    {filas_html}
+  </tbody>
+</table>
+</div>
+"""
+
+
 def render():
     st.header("📖 Glosario del Forecast Semanal")
     st.caption(
@@ -308,3 +456,10 @@ qué configuración de LightGBM se usa para esa serie (ver sección siguiente).
         ),
         unsafe_allow_html=True,
     )
+
+    # ── 6. Guía de columnas — en el mismo orden que la tabla ─────────────
+    st.subheader("📋 Guía de columnas")
+    st.caption(
+        "Cada columna de la pestaña Tabla, explicada en el mismo orden en que aparece de izquierda a derecha."
+    )
+    st.markdown(_tabla_guia_columnas(), unsafe_allow_html=True)
