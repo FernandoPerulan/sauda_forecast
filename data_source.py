@@ -92,7 +92,15 @@ def _leer_onelake(tabla: str) -> pd.DataFrame:
     from deltalake import DeltaTable
 
     dt = DeltaTable(_onelake_table_path(tabla), storage_options=_onelake_storage_options())
-    tabla_arrow = dt.to_pyarrow_table(columns=_ONELAKE_COLUMNAS_NECESARIAS)
+
+    # to_pyarrow_table(columns=...) falla duro si se pide una columna que la
+    # tabla todavía no tiene (ej. una columna nueva del pipeline que no llegó
+    # a producción). Se filtra contra el schema real primero para que la app
+    # nunca se caiga por esto: la columna faltante simplemente no aparece
+    # hasta que el pipeline la agregue al export.
+    columnas_tabla = set(dt.schema().to_arrow().names)
+    columnas_a_pedir = [c for c in _ONELAKE_COLUMNAS_NECESARIAS if c in columnas_tabla]
+    tabla_arrow = dt.to_pyarrow_table(columns=columnas_a_pedir)
 
     for col in _ONELAKE_COLUMNAS_CATEGORICAS:
         if col in tabla_arrow.schema.names:
