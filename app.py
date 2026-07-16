@@ -23,10 +23,32 @@ import pandas as pd
 
 import auth
 import charts
+import glosario
 import logic
 from data_source import cargar_forecast_raw, obtener_estado_datos
 
 usuario = auth.require_login()
+
+if "vista" not in st.session_state:
+    st.session_state["vista"] = "dashboard"
+
+col_titulo, col_boton = st.columns([5, 1])
+with col_titulo:
+    st.title("📈 SAUDA – Forecast Semanal")
+with col_boton:
+    st.write("")
+    if st.session_state["vista"] == "glosario":
+        if st.button("⬅ Volver", use_container_width=True):
+            st.session_state["vista"] = "dashboard"
+            st.rerun()
+    else:
+        if st.button("📖 Glosario", use_container_width=True):
+            st.session_state["vista"] = "glosario"
+            st.rerun()
+
+if st.session_state["vista"] == "glosario":
+    glosario.render()
+    st.stop()
 
 with st.sidebar:
     st.success(f"👤 {usuario}")
