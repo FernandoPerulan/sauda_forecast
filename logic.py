@@ -183,7 +183,13 @@ def opciones_col(df: pd.DataFrame, col: str) -> list:
     )
 
 
-def calcular_metricas(df: pd.DataFrame) -> dict:
+def calcular_metricas(df: pd.DataFrame, hist_weeks: int | None = None) -> dict:
+    """Métricas del panel de KPIs.
+
+    `hist_weeks` acota el "Impacto PROMO" a la misma ventana que el slider
+    "Semanas históricas a mostrar" de la barra lateral (en vez de promediar
+    todo el histórico filtrado, que puede abarcar varios años).
+    """
     df_r = df[df["tipo"] == "R"]
     df_f = df[df["tipo"] == "F"]
 
@@ -201,35 +207,37 @@ def calcular_metricas(df: pd.DataFrame) -> dict:
     else:
         hist_4 = 0.0
 
-    df_bt = df[df["real"].notna() & df["F-MODELO"].notna() & (df["real"] > 0)] \
-        if "F-MODELO" in df.columns else pd.DataFrame()
-    if not df_bt.empty:
-        wape = float((df_bt["real"] - df_bt["F-MODELO"]).abs().sum() / df_bt["real"].sum() * 100)
-    else:
-        wape = float("nan")
+    # Error % últimas 4 semanas: mismo cálculo que el WAPE (Σ|real−F-MODELO|/Σreal×100),
+    # pero acotado a las 4 semanas históricas más recientes con backtest disponible.
+    error_4sem = float("nan")
+    if not df_r.empty and "F-MODELO" in df_r.columns:
+        df_bt = df_r[df_r["real"].notna() & df_r["F-MODELO"].notna() & (df_r["real"] > 0)]
+        if not df_bt.empty:
+            ultimas_4_bt = df_bt[DATE_COL].drop_duplicates().nlargest(4)
+            df_bt_4 = df_bt[df_bt[DATE_COL].isin(ultimas_4_bt)]
+            if not df_bt_4.empty:
+                error_4sem = float(
+                    (df_bt_4["real"] - df_bt_4["F-MODELO"]).abs().sum()
+                    / df_bt_4["real"].sum() * 100
+                )
 
+    # Impacto PROMO: promedio de Promo% (real vs LYSW) en semanas con Promo = 1,
+    # acotado a la ventana de `hist_weeks` (el mismo slider que usa el gráfico).
     promo_uplift = float("nan")
-    if "promo_pct" in df.columns:
-        vals = df.loc[(df["tipo"] == "R") & df["promo_pct"].notna(), "promo_pct"]
+    if "promo_pct" in df_r.columns and not df_r.empty:
+        df_r_ventana = df_r
+        if hist_weeks:
+            cutoff = df_r[DATE_COL].max() - pd.Timedelta(weeks=hist_weeks)
+            df_r_ventana = df_r[df_r[DATE_COL] >= cutoff]
+        vals = df_r_ventana.loc[df_r_ventana["promo_pct"].notna(), "promo_pct"]
         if not vals.empty:
             promo_uplift = float(vals.mean())
-
-    if not df_f.empty and "F-MODELO" in df_f.columns:
-        fechas_fut = df_f[DATE_COL].drop_duplicates().nsmallest(4)
-        fc_4 = float(df_f[df_f[DATE_COL].isin(fechas_fut)]["F-MODELO"].sum())
-        venta_prom_semanal = fc_4 / 4
-        venta_prom_diario = fc_4 / 28
-    else:
-        venta_prom_semanal = float("nan")
-        venta_prom_diario = float("nan")
 
     return {
         "fc_total": fc_total,
         "lysw_total": lysw_total,
         "var_lysw": var_lysw,
         "hist_4sem": hist_4,
-        "wape": wape,
+        "error_4sem": error_4sem,
         "promo_uplift": promo_uplift,
-        "venta_prom_semanal": venta_prom_semanal,
-        "venta_prom_diario": venta_prom_diario,
     }

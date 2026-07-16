@@ -245,13 +245,15 @@ def render():
     # ── 2. Fórmulas y métricas ───────────────────────────────────────────
     st.markdown(
         _card(
-            "Fórmulas de las métricas del panel superior",
+            "Fórmulas de los 6 KPIs del panel superior",
             VERDE, VERDE_CLARO,
-            _fila("Error% PURO", "<code>(Real − Forecast PURO) / Real × 100</code> — error de una semana puntual, calculado solo donde ya hay venta real (Real &gt; 0). Se divide por Real, no por el forecast, para que no se distorsione cuando el modelo predice un valor chico")
-            + _fila("WAPE (backtest)", "<code>Σ|Real − Forecast PURO| / Σ Real × 100</code> — error absoluto ponderado por volumen, agregado sobre todas las semanas con backtest disponible. Cuanto más bajo, mejor.")
-            + _fila("Variación vs LYSW", "<code>(Σ Forecast próx. 4 sem. − Σ LYSW mismo período) / Σ LYSW × 100</code> — compara el forecast contra lo vendido la misma época del año pasado")
-            + _fila("Promo% (uplift)", "<code>(Real − LYSW) / LYSW × 100</code>, calculado solo en semanas históricas con <code>Promo = 1</code> — mide cuánto más (o menos) se vendió vs. el año anterior durante una promo")
-            + _fila("Venta prom. semanal / diaria", "Promedio de <code>Forecast PURO</code> de las primeras 4 semanas de forecast, dividido 4 (semanal) o 28 (diaria)"),
+            "<div style='margin-bottom:8px;'>El panel muestra 2 filas de 3 KPIs: la primera fila mira hacia adelante (el forecast de las próximas 4 semanas), la segunda mira hacia atrás (lo que pasó en las últimas 4 semanas).</div>"
+            + _fila("Forecast próx. 4 sem.", "<code>Σ Forecast PURO</code> de las próximas 4 semanas de forecast, sumado sobre todo lo filtrado")
+            + _fila("LYSW próx. 4 sem.", "<code>Σ LYSW</code> de esas mismas 4 semanas futuras, para comparar contra el año anterior")
+            + _fila("Variación Forecast vs LYSW próx. 4 sem.", "<code>(Σ Forecast próx. 4 sem. − Σ LYSW próx. 4 sem.) / Σ LYSW próx. 4 sem. × 100</code>")
+            + _fila("Real últimas 4 semanas", "<code>Σ Real</code> de las últimas 4 semanas históricas ya cerradas")
+            + _fila("Error % últimas 4 semanas", "<code>Σ|Real − Forecast PURO| / Σ Real × 100</code>, igual que el WAPE pero acotado solo a las últimas 4 semanas con backtest disponible (no a todo el histórico)")
+            + _fila("Impacto PROMO", "<code>Promedio de Promo%</code> = <code>(Real − LYSW) / LYSW × 100</code> en semanas con <code>Promo = 1</code>, acotado a la ventana del slider <b>\"Semanas históricas a mostrar\"</b> de la barra lateral (no a todo el histórico filtrado) — el título del KPI muestra cuántas semanas está usando"),
             icono="📐",
         ),
         unsafe_allow_html=True,

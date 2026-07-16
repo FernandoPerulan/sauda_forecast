@@ -176,24 +176,31 @@ if df_filtrado.empty:
     st.stop()
 
 # ── Métricas ─────────────────────────────────────────────────────────
-m = logic.calcular_metricas(df_filtrado)
+# 6 KPIs en 2 filas de 3: fila 1 mira hacia adelante (forecast próx. 4 sem.),
+# fila 2 mira hacia atrás (real / error / impacto promo últimas semanas).
+m = logic.calcular_metricas(df_filtrado, hist_weeks=hist_weeks)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 c1.metric("Forecast próx. 4 sem.", f"{m['fc_total']:,.0f}")
-c2.metric("LYSW mismo período", f"{m['lysw_total']:,.0f}")
+c2.metric("LYSW próx. 4 sem.", f"{m['lysw_total']:,.0f}")
 c3.metric(
-    "Variación vs LYSW",
+    "Variación Forecast vs LYSW próx. 4 sem.",
     f"{m['var_lysw']:+.1f} %" if pd.notna(m['var_lysw']) else "—",
 )
-c4.metric("Real últimas 4 sem.", f"{m['hist_4sem']:,.0f}")
 
-c5, c6, c7, c8 = st.columns(4)
-c5.metric("Venta prom. semanal", f"{m['venta_prom_semanal']:,.1f}" if pd.notna(m['venta_prom_semanal']) else "—")
-c6.metric("Venta prom. diaria", f"{m['venta_prom_diario']:,.1f}" if pd.notna(m['venta_prom_diario']) else "—")
-c7.metric("WAPE (backtest)", f"{m['wape']:.1f} %" if pd.notna(m['wape']) else "—")
-c8.metric(
-    "PROMO% (uplift)",
+c4, c5, c6 = st.columns(3)
+c4.metric("Real últimas 4 semanas", f"{m['hist_4sem']:,.0f}")
+c5.metric(
+    "Error % últimas 4 semanas",
+    f"{m['error_4sem']:.1f} %" if pd.notna(m['error_4sem']) else "—",
+)
+c6.metric(
+    f"Impacto PROMO (últimas {hist_weeks} sem.)",
     f"{m['promo_uplift']:+.1f} %" if pd.notna(m['promo_uplift']) else "—",
+    help=(
+        "Promedio de Promo% (venta real vs. LYSW) en semanas con promoción activa, "
+        "dentro de la ventana elegida en \"Semanas históricas a mostrar\" (barra lateral)."
+    ),
 )
 
 partes_contexto = [
