@@ -32,8 +32,11 @@ TABLE_COLS = [
     ("Articulo Desc",       "Artículo"),
     ("Cluster",             "Cluster"),
     ("cv_grupo",            "Grupo CV"),
+    ("cv_valor",            "CV (valor)"),
     ("real",                "Real (unid.)"),
     ("F-MODELO",            "Forecast PURO"),
+    ("F_MIN",               "Forecast mín. (80%)"),
+    ("F_MAX",               "Forecast máx. (80%)"),
     ("venta_prom_semanal",  "Venta prom. semanal"),
     ("venta_prom_diario",   "Venta prom. diaria"),
     ("error_pct",           "Error% PURO"),
@@ -41,6 +44,11 @@ TABLE_COLS = [
     ("Promo",               "Promo"),
     ("promo_pct",           "Promo%"),
     ("Feriado",             "Feriado"),
+    ("confiabilidad",       "Confiabilidad"),
+    ("wmape",               "WMAPE serie"),
+    ("bias_pct",            "Sesgo (bias)"),
+    ("desv_estandar",       "Desvío estándar"),
+    ("n_hist",              "Semanas hist. usadas"),
 ]
 
 COL_DISPLAY = {orig: disp for orig, disp in TABLE_COLS}
@@ -74,7 +82,11 @@ def transformar_datos(df: pd.DataFrame) -> pd.DataFrame:
             # de forecast cuando todavía no tiene venta real registrada.
             df["tipo"] = np.where(df["real"].isna(), "F", "R")
 
-    for col in ["real", "forecast", "LYSW", "F-MODELO"]:
+    for col in [
+        "real", "forecast", "LYSW", "F-MODELO",
+        "cv_valor", "desv_estandar", "F_MIN", "F_MAX",
+        "wmape", "bias_pct", "n_hist",
+    ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 

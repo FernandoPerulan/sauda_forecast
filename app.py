@@ -231,11 +231,18 @@ with tab_tabla:
         "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
         "Real (unid.)": st.column_config.NumberColumn(format="%.0f"),
         "Forecast PURO": st.column_config.NumberColumn(format="%.0f"),
+        "Forecast mín. (80%)": st.column_config.NumberColumn(format="%.0f"),
+        "Forecast máx. (80%)": st.column_config.NumberColumn(format="%.0f"),
         "Venta prom. semanal": st.column_config.NumberColumn(format="%.1f"),
         "Venta prom. diaria": st.column_config.NumberColumn(format="%.1f"),
         "Error% PURO": st.column_config.NumberColumn(format="%.1f%%"),
         "LYSW": st.column_config.NumberColumn(format="%.0f"),
         "Promo%": st.column_config.NumberColumn(format="%.1f%%"),
+        "CV (valor)": st.column_config.NumberColumn(format="%.3f"),
+        "WMAPE serie": st.column_config.NumberColumn(format="%.1f%%"),
+        "Sesgo (bias)": st.column_config.NumberColumn(format="%+.1f%%"),
+        "Desvío estándar": st.column_config.NumberColumn(format="%.1f"),
+        "Semanas hist. usadas": st.column_config.NumberColumn(format="%d"),
     }
 
     st.dataframe(

@@ -95,6 +95,25 @@ def render():
         unsafe_allow_html=True,
     )
 
+    # ── 2.1 Confiabilidad del modelo por serie (columnas nuevas) ─────────
+    st.markdown(
+        _card(
+            "Confiabilidad del modelo por serie (Artículo × Sucursal)",
+            AZUL, AZUL_CLARO,
+            "<div style='margin-bottom:8px;'>Estas columnas <b>no se recalculan con los filtros de la izquierda</b>: vienen ya calculadas "
+            "desde el pipeline, usando <b>todo el historial de backtest</b> disponible de cada serie (no solo las últimas 4 semanas). "
+            "Son el diagnóstico del propio modelo sobre qué tan bien predice ese artículo puntual en esa sucursal.</div>"
+            + _fila("WMAPE serie", "<code>Σ|Real − Forecast PURO| / Σ Real × 100</code>, sumado sobre todo el historial de esa serie (no solo el período filtrado)")
+            + _fila("Sesgo (bias_pct)", "<code>−Σ(Real − Forecast PURO) / Σ Real × 100</code> — <b>positivo</b> = el modelo sobreestima esa serie de forma sistemática, <b>negativo</b> = la subestima")
+            + _fila("Desvío estándar", "Desvío estándar de los residuos históricos (Real − Forecast PURO) de esa serie — mide cuánto varía el error semana a semana")
+            + _fila("Forecast mín. / máx. (80%)", "<code>Forecast PURO ± 1.28 × Desvío estándar</code> — banda de confianza aproximada del 80% alrededor del forecast (el mínimo nunca baja de 0)")
+            + _fila("Confiabilidad", "<b>Alta</b> si WMAPE serie &lt; 20% &nbsp;|&nbsp; <b>Media</b> si WMAPE serie &lt; 40% &nbsp;|&nbsp; <b>Baja</b> si WMAPE serie ≥ 40% o si hay menos de 8 semanas de historial &nbsp;|&nbsp; <b>Sin datos</b> si la serie no tiene backtest todavía")
+            + _fila("Semanas hist. usadas (n_hist)", "Cantidad de semanas con Real y Forecast PURO simultáneos que se usaron para calcular las 5 métricas anteriores — a más semanas, más confiable el diagnóstico"),
+            icono="📏",
+        ),
+        unsafe_allow_html=True,
+    )
+
     # ── 3. Clasificación por volatilidad — Grupo CV ─────────────────────
     st.subheader("🏷️ Clasificación de productos")
 

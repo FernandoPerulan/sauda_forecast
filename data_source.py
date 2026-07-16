@@ -32,15 +32,15 @@ FORECAST_PARQUET_PATH = _BASE / "Data" / "forecast_final_semanal.parquet"
 _ONELAKE_CACHE_TTL = 3600
 
 # Columnas realmente usadas por la app (ver logic.py). Pedir solo estas —en
-# vez de las ~24 que trae la tabla real, con columnas de diagnóstico del
-# pipeline que no se muestran (desv_estandar, F_MIN, F_MAX, confiabilidad,
-# wmape, bias_pct, cv_valor, n_hist, IDSucursal, IDArticulo, week_of_year)—
-# reduce bastante la memoria y el tiempo de lectura. Nombres en crudo, tal
-# como están en la tabla del Lakehouse (antes del rename de logic.py).
+# vez de las ~24 que trae la tabla real, que además incluye columnas todavía
+# sin usar en el dashboard (IDSucursal, IDArticulo, week_of_year)— reduce
+# bastante la memoria y el tiempo de lectura. Nombres en crudo, tal como
+# están en la tabla del Lakehouse (antes del rename de logic.py).
 _ONELAKE_COLUMNAS_NECESARIAS = [
     "FechaCbte", "Sucursal", "Departamento", "Familia", "SubFamilia",
-    "Articulo_Desc", "Cluster", "cv_grupo", "real", "F_MODELO",
-    "Promo", "Feriado", "LYSW",
+    "Articulo_Desc", "Cluster", "cv_grupo", "cv_valor", "real", "F_MODELO",
+    "F_MIN", "F_MAX", "Promo", "Feriado", "LYSW",
+    "confiabilidad", "wmape", "bias_pct", "desv_estandar", "n_hist",
 ]
 
 # Columnas de texto con pocos valores únicos repetidos en ~2M filas. Se
@@ -51,7 +51,7 @@ _ONELAKE_COLUMNAS_NECESARIAS = [
 # antes, el pico baja a ~150-390MB.
 _ONELAKE_COLUMNAS_CATEGORICAS = [
     "Sucursal", "Departamento", "Familia", "SubFamilia",
-    "Articulo_Desc", "Cluster", "cv_grupo",
+    "Articulo_Desc", "Cluster", "cv_grupo", "confiabilidad",
 ]
 
 
