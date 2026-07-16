@@ -33,6 +33,9 @@ TABLE_COLS = [
     ("Cluster",             "Cluster"),
     ("cv_grupo",            "Grupo CV"),
     ("cv_valor",            "CV (valor)"),
+    ("roll_std_4",          "Desvío ventas 4 sem."),
+    ("roll_std_8",          "Desvío ventas 8 sem."),
+    ("roll_std_12",         "Desvío ventas 12 sem."),
     ("real",                "Real (unid.)"),
     ("F-MODELO",            "Forecast PURO"),
     ("F_MIN",               "Forecast mín. (80%)"),
@@ -86,17 +89,22 @@ def transformar_datos(df: pd.DataFrame) -> pd.DataFrame:
         "real", "forecast", "LYSW", "F-MODELO",
         "cv_valor", "desv_estandar", "F_MIN", "F_MAX",
         "wmape", "bias_pct", "n_hist",
+        "roll_std_4", "roll_std_8", "roll_std_12",
     ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Error porcentual PURO: (real − Forecast PURO) / Forecast PURO × 100
+    # Error porcentual PURO: (real − Forecast PURO) / real × 100
+    # Divide por "real" (no por el forecast) para ser consistente con el WAPE
+    # de calcular_metricas() y con error_pct del pipeline de entrenamiento
+    # (Forecast_LightGBM_v1/.../engine.py: error_abs / real × 100) — dividir
+    # por el forecast distorsiona el % cuando el modelo predice un valor chico.
     if "real" in df.columns and "F-MODELO" in df.columns:
-        mask = df["real"].notna() & df["F-MODELO"].notna() & (df["F-MODELO"] > 0)
+        mask = df["real"].notna() & df["F-MODELO"].notna() & (df["real"] > 0)
         df["error_pct"] = np.nan
         df.loc[mask, "error_pct"] = (
             (df.loc[mask, "real"] - df.loc[mask, "F-MODELO"])
-            / df.loc[mask, "F-MODELO"]
+            / df.loc[mask, "real"]
             * 100
         )
 
@@ -195,8 +203,8 @@ def calcular_metricas(df: pd.DataFrame) -> dict:
 
     df_bt = df[df["real"].notna() & df["F-MODELO"].notna() & (df["real"] > 0)] \
         if "F-MODELO" in df.columns else pd.DataFrame()
-    if not df_bt.empty and "error_abs" in df_bt.columns:
-        wape = float(df_bt["error_abs"].sum() / df_bt["real"].sum() * 100)
+    if not df_bt.empty:
+        wape = float((df_bt["real"] - df_bt["F-MODELO"]).abs().sum() / df_bt["real"].sum() * 100)
     else:
         wape = float("nan")
 

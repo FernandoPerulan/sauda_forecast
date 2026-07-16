@@ -41,6 +41,7 @@ _ONELAKE_COLUMNAS_NECESARIAS = [
     "Articulo_Desc", "Cluster", "cv_grupo", "cv_valor", "real", "F_MODELO",
     "F_MIN", "F_MAX", "Promo", "Feriado", "LYSW",
     "confiabilidad", "wmape", "bias_pct", "desv_estandar", "n_hist",
+    "roll_std_4", "roll_std_8", "roll_std_12",
 ]
 
 # Columnas de texto con pocos valores únicos repetidos en ~2M filas. Se

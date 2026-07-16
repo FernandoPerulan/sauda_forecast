@@ -27,6 +27,8 @@ ROJO = "#DC2626"
 ROJO_CLARO = "#FEE2E2"
 MORADO = "#7C3AED"
 MORADO_CLARO = "#EDE9FE"
+CIAN = "#0891B2"
+CIAN_CLARO = "#CFFAFE"
 
 
 def _card(titulo: str, color: str, color_claro: str, cuerpo_html: str, icono: str = "") -> str:
@@ -99,6 +101,18 @@ _GUIA_COLUMNAS = [
      "Valor numérico del coeficiente de variación que determinó el Grupo CV de esa serie.",
      "Número (ratio, sin unidad)", "0.42",
      "Ver qué tan cerca está un artículo del límite entre Grupo B (0.35) y Grupo C (0.80), aunque la etiqueta ya esté fija."),
+    ("Desvío ventas 4 sem.", "roll_std_4",
+     "Desvío estándar de las unidades vendidas en las últimas 4 semanas (sin contar la semana actual). Feature que alimenta al modelo LightGBM.",
+     "Unidades vendidas", "6.2",
+     "Ver si la variabilidad de venta se disparó en el último mes, incluso antes de que cambie el Grupo CV."),
+    ("Desvío ventas 8 sem.", "roll_std_8",
+     "Ídem al anterior, sobre una ventana más larga de 8 semanas.",
+     "Unidades vendidas", "9.4",
+     "Suavizar el ruido de una sola semana rara y ver la tendencia de variabilidad de 2 meses."),
+    ("Desvío ventas 12 sem.", "roll_std_12",
+     "Ídem al anterior, sobre una ventana de 12 semanas (~1 trimestre).",
+     "Unidades vendidas", "11.8",
+     "Comparar la volatilidad de un trimestre contra la de las últimas 4 semanas, para ver si un artículo se está estabilizando o desestabilizando."),
     ("Real (unid.)", "real",
      "Cantidad realmente vendida esa semana. Solo tiene valor en filas Histórico.",
      "Unidades vendidas", "134",
@@ -233,7 +247,7 @@ def render():
         _card(
             "Fórmulas de las métricas del panel superior",
             VERDE, VERDE_CLARO,
-            _fila("Error% PURO", "<code>(Real − Forecast PURO) / Forecast PURO × 100</code> — error de una semana puntual, calculado solo donde ya hay venta real y Forecast PURO &gt; 0")
+            _fila("Error% PURO", "<code>(Real − Forecast PURO) / Real × 100</code> — error de una semana puntual, calculado solo donde ya hay venta real (Real &gt; 0). Se divide por Real, no por el forecast, para que no se distorsione cuando el modelo predice un valor chico")
             + _fila("WAPE (backtest)", "<code>Σ|Real − Forecast PURO| / Σ Real × 100</code> — error absoluto ponderado por volumen, agregado sobre todas las semanas con backtest disponible. Cuanto más bajo, mejor.")
             + _fila("Variación vs LYSW", "<code>(Σ Forecast próx. 4 sem. − Σ LYSW mismo período) / Σ LYSW × 100</code> — compara el forecast contra lo vendido la misma época del año pasado")
             + _fila("Promo% (uplift)", "<code>(Real − LYSW) / LYSW × 100</code>, calculado solo en semanas históricas con <code>Promo = 1</code> — mide cuánto más (o menos) se vendió vs. el año anterior durante una promo")
@@ -326,6 +340,30 @@ qué configuración de LightGBM se usa para esa serie (ver sección siguiente).
 """,
                 unsafe_allow_html=True,
             )
+
+    st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+
+    # ── 3.1 Desvío estándar de ventas 4/8/12 semanas (features de volatilidad) ─
+    st.markdown(
+        _card(
+            "Desvío estándar de ventas — 4 / 8 / 12 semanas",
+            CIAN, CIAN_CLARO,
+            "<div style='margin-bottom:8px;'>Son variables (<i>features</i>) que alimentan a los tres modelos LightGBM (A/B/C): miden qué tan "
+            "dispersa estuvo la <b>venta real</b> en distintas ventanas recientes, semana a semana. No son un valor fijo por serie como el "
+            "<code>Grupo CV</code> — se recalculan en cada fila con la información disponible hasta la semana anterior.</div>"
+            + _fila("roll_std_4", "Desvío estándar de las unidades vendidas en las últimas 4 semanas (sin contar la semana actual). Requiere al menos 2 semanas con dato para calcularse.")
+            + _fila("roll_std_8", "Ídem sobre las últimas 8 semanas. Requiere al menos 4 semanas con dato.")
+            + _fila("roll_std_12", "Ídem sobre las últimas 12 semanas. Requiere al menos 6 semanas con dato.")
+            + "<div style='margin-top:8px;font-size:0.82rem;color:#1E293B;'>"
+            "<b>No confundir</b> con <code>Desvío estándar</code> (columna <code>desv_estandar</code> de la sección anterior): esa mide el error "
+            "del modelo (Real − Forecast PURO) acumulado en todo el histórico de la serie; estas tres miden la variabilidad de la <b>demanda cruda</b> "
+            "en ventanas cortas y recientes. Sirven para detectar que un artículo se está poniendo más errático <i>antes</i> de que el Grupo CV "
+            "(calculado sobre todo el histórico) llegue a reclasificarlo."
+            "</div>",
+            icono="📊",
+        ),
+        unsafe_allow_html=True,
+    )
 
     st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
 
